@@ -1,0 +1,28 @@
+# Build artifacts
+/build/
+*.obj
+*.lib
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.exp
+*.idb
+
+# Game ROM, BIOS, and Saves
+*.gba
+*.bin
+*.sav
+/saves/
+bios.cfg
+rom.cfg
+
+# Generated AOT Shards and dispatch (reproducible from ROM via gbarecomp)
+/generated/
+
+# Test artifacts and traces
+*.bmp
+*.png
+replay_*.txt
+test_*.bmp
+test_*.png
