@@ -16,6 +16,7 @@
 /saves/
 bios.cfg
 rom.cfg
+disc.cfg
 
 # Generated AOT Shards and dispatch (reproducible from ROM via gbarecomp)
 /generated/

@@ -12,6 +12,7 @@
 #endif
 
 #include "runtime.h"
+#include "game_launcher_boot.h"
 
 namespace {
 
@@ -30,20 +31,6 @@ void suppress_diagnostics() {
 #endif
 }
 
-std::filesystem::path get_executable_dir(char* argv0) {
-    std::error_code ec;
-#ifdef _WIN32
-    wchar_t exe_path[MAX_PATH];
-    const DWORD n = GetModuleFileNameW(nullptr, exe_path, MAX_PATH);
-    if (n > 0 && n < MAX_PATH) {
-        return std::filesystem::path(exe_path).parent_path();
-    }
-#endif
-    auto p = std::filesystem::absolute(argv0, ec);
-    if (!ec) return p.parent_path();
-    return std::filesystem::current_path();
-}
-
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -58,21 +45,37 @@ int main(int argc, char** argv) {
     options.builtin_game_name = "F-Zero: Maximum Velocity";
     options.builtin_rom_sha1  = "8a08e29ec987f9cbdde21c34d5f7657aa7ba0be6";
     options.builtin_rom_crc32 = 0xbd5e9798u;
+    options.launcher_region   = "USA, Europe";
+    options.launcher_game_config = "game.toml";
+    options.launcher_save_path = "saves/fzero_maximum_velocity.sav";
     options.max_view_width = 240;
     options.freely_resizable_window = true;
-
-    const auto exe_dir = get_executable_dir(argv[0]);
-    auto project_root = exe_dir;
-    if (std::filesystem::exists(exe_dir.parent_path() / "gbarecomp-project.json")) {
-        project_root = exe_dir.parent_path();
-    } else if (std::filesystem::exists(exe_dir.parent_path().parent_path() / "gbarecomp-project.json")) {
-        project_root = exe_dir.parent_path().parent_path();
-    }
+    options.launcher_expose_sharp_filter = true;
+    options.launcher_default_sharp_filter = true;
+    options.launcher_expose_affine_filter = false;
+    options.launcher_expose_widescreen = false;
+    options.launcher_expose_adaptive_view = false;
+    options.expose_assist_tools = true;
 
     std::vector<std::string> args;
-    args.reserve(argc + 8);
+    args.reserve(argc + 12);
     for (int i = 0; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
+            std::puts("FZeroMaximumVelocityRecomp [--rom <path>] [--bios <path>] [--launcher] [--no-launcher] [--help]");
+            return 0;
+        }
         args.emplace_back(argv[i]);
+    }
+
+    // Preboot launcher: opens recomp-ui GUI unless skipped by explicit CLI / headless / skip_launcher
+    if (game_launcher_preboot(args, options) != 0) {
+        // User quit launcher window without booting
+        return 0;
+    }
+
+    // Validate inputs (ROM integrity, retail BIOS, default flags)
+    if (game_validate_inputs(args, options) != 0) {
+        return 1;
     }
 
     auto has_arg = [&](const std::string& key) {
@@ -82,49 +85,8 @@ int main(int argc, char** argv) {
         return false;
     };
 
-    // Locate ROM
-    if (!has_arg("--rom")) {
-        std::filesystem::path candidate_roms[] = {
-            project_root / "F-Zero - Maximum Velocity (USA, Europe).gba",
-            exe_dir / "F-Zero - Maximum Velocity (USA, Europe).gba",
-            std::filesystem::current_path() / "F-Zero - Maximum Velocity (USA, Europe).gba"
-        };
-        for (const auto& cand : candidate_roms) {
-            if (std::filesystem::exists(cand)) {
-                args.emplace_back("--rom");
-                args.emplace_back(std::filesystem::canonical(cand).string());
-                break;
-            }
-        }
-    }
-
-    // Locate BIOS
-    if (!has_arg("--bios")) {
-        std::filesystem::path candidate_bios[] = {
-            project_root / "gba_bios.bin",
-            exe_dir / "gba_bios.bin",
-            std::filesystem::path("D:/MYAPPLICA/1GAMAMA/GBAGAMES/gbabios/gba_bios.bin")
-        };
-        for (const auto& cand : candidate_bios) {
-            if (std::filesystem::exists(cand)) {
-                args.emplace_back("--bios");
-                args.emplace_back(std::filesystem::canonical(cand).string());
-                break;
-            }
-        }
-    }
-
-    // Setup saves directory
-    if (!has_arg("--save")) {
-        std::error_code ec;
-        const auto saves_dir = project_root / "saves";
-        std::filesystem::create_directories(saves_dir, ec);
-        args.emplace_back("--save");
-        args.emplace_back((saves_dir / "fzero_maximum_velocity.sav").string());
-    }
-
-    // Default to windowed mode
-    if (!has_arg("--window") && !has_arg("--fullscreen")) {
+    // Default to windowed mode if neither window, fullscreen, nor no-window was passed
+    if (!has_arg("--window") && !has_arg("--fullscreen") && !has_arg("--no-window")) {
         args.emplace_back("--window");
     }
 
